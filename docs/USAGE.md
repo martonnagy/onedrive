@@ -74,7 +74,7 @@ Config option 'skip_dir'               =
 Config option 'skip_file'              = ~*|.~*|*.tmp
 Config option 'skip_dotfiles'          = false
 Config option 'skip_symlinks'          = false
-Config option 'monitor_interval'       = 45
+Config option 'monitor_interval'       = 300
 Config option 'min_notify_changes'     = 5
 Config option 'log_dir'                = /var/log/onedrive/
 Config option 'classify_as_big_delete' = 1000
@@ -145,6 +145,10 @@ onedrive --synchronize --download-only
 In some cases it may be desirable to 'upload only' to OneDrive. To do this use the following command:
 ```text
 onedrive --synchronize --upload-only
+```
+**Note:** If a file or folder is present on OneDrive, that does not exist locally, it will be removed. If the data on OneDrive should be kept, the following should be used:
+```text
+onedrive --synchronize --upload-only --no-remote-delete
 ```
 
 ### Increasing logging level
@@ -238,7 +242,11 @@ Configuration is determined by three layers: the default values, values set in t
 
 Most command line options have a respective configuration file setting.
 
-If you want to change the defaults, you can copy and edit the included config file into your `~/.config/onedrive` directory:
+If you want to change the defaults, you can copy and edit the included config file into your configuration directory. Valid directories for the config file are:
+*   `~/.config/onedrive`
+*   `/etc/onedrive`
+
+**Example:**
 ```text
 mkdir -p ~/.config/onedrive
 cp ./config ~/.config/onedrive/config
@@ -246,7 +254,7 @@ nano ~/.config/onedrive/config
 ```
 This file does not get created by default, and should only be created if you want to change the 'default' operational parameters.
 
-See the [config](config) file for the full list of options, and [All available commands](https://github.com/abraunegg/onedrive/blob/master/docs/USAGE.md#all-available-commands) for all possible keys and there default values.
+See the [config](https://raw.githubusercontent.com/abraunegg/onedrive/master/config) file for the full list of options, and [All available commands](https://github.com/abraunegg/onedrive/blob/master/docs/USAGE.md#all-available-commands) for all possible keys and there default values.
 
 The default configuration file is listed below:
 ```text
@@ -259,7 +267,7 @@ The default configuration file is listed below:
 #
 # sync_dir = "~/OneDrive"
 # skip_file = "~*|.~*|*.tmp"
-# monitor_interval = "45"
+# monitor_interval = "300"
 # skip_dir = ""
 # log_dir = "/var/log/onedrive/"
 # drive_id = ""
@@ -287,8 +295,11 @@ The default configuration file is listed below:
 # remove_source_files = "false"
 # skip_dir_strict_match = "false"
 # application_id = ""
+# resync = "false"
+# bypass_data_preservation = "false"
+# azure_ad_endpoint = ""
+# sync_business_shared_folders = "false"
 ```
-
 
 
 ### 'config' file configuration examples:
@@ -302,7 +313,7 @@ Example:
 #
 sync_dir="~/MyDirToSync"
 # skip_file = "~*|.~*|*.tmp"
-# monitor_interval = "45"
+# monitor_interval = "300"
 # skip_dir = ""
 # log_dir = "/var/log/onedrive/"
 ```
@@ -321,7 +332,7 @@ Example:
 #
 # sync_dir = "~/OneDrive"
 # skip_file = "~*|.~*|*.tmp"
-# monitor_interval = "45"
+# monitor_interval = "300"
 skip_dir = "Desktop|Documents/IISExpress|Documents/SQL Server Management Studio|Documents/Visual Studio*|Documents/WindowsPowerShell"
 # log_dir = "/var/log/onedrive/"
 ```
@@ -339,7 +350,7 @@ Example:
 #
 # sync_dir = "~/OneDrive"
 skip_file = "~*|Documents/OneNote*|Documents/config.xlaunch|myfile.ext"
-# monitor_interval = "45"
+# monitor_interval = "300"
 # skip_dir = ""
 # log_dir = "/var/log/onedrive/"
 ```
@@ -366,7 +377,7 @@ Example:
 # debug_https = "false"
 skip_dotfiles = "true"
 # dry_run = "false"
-# monitor_interval = "45"
+# monitor_interval = "300"
 ```
 Setting this to `"true"` will skip all .files and .folders while syncing.
 
@@ -386,17 +397,17 @@ Example:
 ```text
 # skip_dotfiles = "false"
 # dry_run = "false"
-monitor_interval = "300"
+monitor_interval = "600"
 # min_notify_changes = "5"
 # monitor_log_frequency = "5"
 ```
-The monitor interval is defined as the wait time 'between' sync's when running in monitor mode. By default without configuration, the monitor_interval is set to 45 seconds. Setting this value to 300 will run the sync process every 5 minutes.
+The monitor interval is defined as the wait time 'between' sync's when running in monitor mode. By default without configuration, the monitor_interval is set to 300 seconds. Setting this value to 600 will run the sync process every 10 minutes.
 
 #### min_notify_changes
 Example:
 ```text
 # dry_run = "false"
-# monitor_interval = "45"
+# monitor_interval = "300"
 min_notify_changes = "50"
 # monitor_log_frequency = "5"
 # monitor_fullscan_frequency = "10"
@@ -409,11 +420,16 @@ To enable selective sync create a file named `sync_list` in `~/.config/onedrive`
 Each line of the file represents a relative path from your `sync_dir`. All files and directories not matching any line of the file will be skipped during all operations.
 Here is an example of `sync_list`:
 ```text
+# sync_list supports comments
+# Exclude my Backup folder
 Backup
+# Exclude this single document
 Documents/latest_report.docx
-Work/ProjectX
+# Exclude all Work/Project directories
+Work/Project*
 notes.txt
-Blender
+# Exclude /Blender in the ~OneDrive root but not if elsewhere
+/Blender
 Cinema Soc
 Codes
 Textbooks
@@ -443,7 +459,7 @@ check_nosync = "true"
 Folders shared with you can be synced by adding them to your OneDrive. To do that open your Onedrive, go to the Shared files list, right click on the folder you want to sync and then click on "Add to my OneDrive".
 
 ### Shared folders (OneDrive Business or Office 365)
-Currently not supported.
+Refer to [./BusinessSharedFolders.md](BusinessSharedFolders.md) for configuration assistance.
 
 ### SharePoint / Office 365 Shared Libraries
 Refer to [./Office365.md](Office365.md) for configuration assistance.
@@ -496,27 +512,29 @@ To change what 'user' the client runs under (by default root), manually edit the
 systemctl --user enable onedrive
 systemctl --user start onedrive
 ```
+**Note:** `systemctl --user` directive is not applicable for Red Hat Enterprise Linux (RHEL) or CentOS Linux platforms - see below.
+
+**Note:** This will run the 'onedrive' process with a UID/GID of '0', thus, any files or folders that are created will be owned by 'root'
 
 To see the logs run:
 ```text
-journalctl --user-unit onedrive -f
+journalctl --user-unit=onedrive -f
 ```
 
 ### OneDrive service running as root user via systemd (Red Hat Enterprise Linux, CentOS Linux)
-
 ```text
 systemctl enable onedrive
 systemctl start onedrive
 ```
+**Note:** This will run the 'onedrive' process with a UID/GID of '0', thus, any files or folders that are created will be owned by 'root'
 
 To see the logs run:
 ```text
-journalctl onedrive -f
+journalctl --unit=onedrive -f
 ```
 
-### OneDrive service running as a non-root user via systemd (without notifications or GUI) 
-
-In some cases it is desirable to run the OneDrive client as a service, but not running as the 'root' user. In this case, follow the directions below to configure the service for a non-root user.
+### OneDrive service running as a non-root user via systemd (All Linux Distributions)
+In some cases it is desirable to run the OneDrive client as a service, but not running as the 'root' user. In this case, follow the directions below to configure the service for your normal user login.
 
 1.  As the user, who will be running the service, run the application in standalone mode, authorize the application for use & validate that the synchronization is working as expected:
 ```text
@@ -532,8 +550,12 @@ systemctl start onedrive@<username>.service
 systemctl status onedrive@<username>.service
 ```
 
-### OneDrive service running as a non-root user via systemd (with notifications enabled) (Arch, Ubuntu, Debian, OpenSuSE, Fedora)
+To see the logs run:
+```text
+journalctl --unit=onedrive@<username> -f
+```
 
+### OneDrive service running as a non-root user via systemd (with notifications enabled) (Arch, Ubuntu, Debian, OpenSuSE, Fedora)
 In some cases you may wish to receive GUI notifications when using the client when logged in as a non-root user. In this case, follow the directions below:
 
 1. Login via graphical UI as user you wish to enable the service for
@@ -550,10 +572,10 @@ systemctl --user start onedrive
 
 To see the logs run:
 ```text
-journalctl --user-unit onedrive -f
+journalctl --user-unit=onedrive -f
 ```
 
-**Note:** `systemctl --user` is not applicable for Red Hat Enterprise Linux (RHEL) or CentOS Linux platforms
+**Note:** `systemctl --user` directive is not applicable for Red Hat Enterprise Linux (RHEL) or CentOS Linux platforms
 
 ## Additional Configuration
 ### Using multiple OneDrive accounts
@@ -574,8 +596,10 @@ onedrive --monitor --verbose --confdir="~/.config/onedriveWork" &
 *   `&` puts the application in background and leaves the terminal interactive
 
 ### Automatic syncing of both OneDrive accounts
+In order to automatically start syncing your OneDrive accounts, you will need to create a service file for each account. From the applicable 'user systemd folder':
+*   RHEL / CentOS: `/usr/lib/systemd/system`
+*   Others: `/usr/lib/systemd/user`
 
-In order to automatically start syncing your OneDrive accounts, you will need to create a service file for each account. From the `/usr/lib/systemd/user` folder:
 ```text
 cp onedrive.service onedrive-work.service
 ```
@@ -650,8 +674,8 @@ Options:
 
   --auth-files ARG
       Perform authorization via two files passed in as ARG in the format `authUrl:responseUrl`
-	  The authorization URL is written to the `authUrl`, then onedrive waits for the file `responseUrl`
-	  to be present, and reads the response from that file.
+      The authorization URL is written to the `authUrl`, then onedrive waits for the file `responseUrl`
+      to be present, and reads the response from that file.
   --check-for-nomount
       Check for the presence of .nosync in the syncdir root. If found, do not perform sync.
   --check-for-nosync
@@ -675,7 +699,7 @@ Options:
   --display-sync-status
       Display the sync status of the client - no sync will be performed.
   --download-only
-      Only download remote changes
+      Replicate the OneDrive online state locally, by only downloading changes from OneDrive. Do not upload local changes to OneDrive.
   --dry-run
       Perform a trial sync with no changes made
   --enable-logging
@@ -692,6 +716,8 @@ Options:
       Display the file link of a synced file
   --help -h
       This help information.
+  --list-shared-folders
+      List OneDrive Business Shared Folders
   --local-first
       Synchronize from the local directory source first, before downloading changes from OneDrive.
   --log-dir ARG
@@ -728,7 +754,7 @@ Options:
       Skip dot files and folders from syncing
   --skip-file ARG
       Skip any files that match this pattern from syncing
-  --skip-size
+  --skip-size ARG
       Skip new files larger than this size (in MB)
   --skip-symlinks
       Skip syncing of symlinks
@@ -736,12 +762,14 @@ Options:
       Source directory to rename or move on OneDrive - no sync will be performed.
   --sync-root-files
       Sync all files in sync_dir root when using sync_list.
+  --sync-shared-folders
+      Sync OneDrive Business Shared Folders
   --syncdir ARG
       Specify the local directory used for synchronization to OneDrive
   --synchronize
       Perform a synchronization
   --upload-only
-      Only upload to OneDrive, do not sync changes from OneDrive locally
+      Replicate the locally configured sync_dir state to OneDrive, by only uploading local changes to OneDrive. Do not download changes from OneDrive.
   --user-agent ARG
       Specify a User Agent string to the http client
   --verbose -v+

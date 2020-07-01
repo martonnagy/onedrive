@@ -15,15 +15,26 @@ private bool simulateNoRefreshTokenFile = false;
 private ulong retryAfterValue = 0;
 
 private immutable {
-	// Personal & Business Queries
-	string authUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
-	string redirectUrl = "https://login.microsoftonline.com/common/oauth2/nativeclient";
-	string tokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
-	string driveByIdUrl = "https://graph.microsoft.com/v1.0/drives/";
+	// Azure Active Directory & Graph Explorer Endpoints
+	// Global & Defaults
+	string globalAuthEndpoint = "https://login.microsoftonline.com";
+	string globalGraphEndpoint = "https://graph.microsoft.com";
 	
-	// Office 365 / SharePoint Queries
-	string siteSearchUrl = "https://graph.microsoft.com/v1.0/sites?search";
-	string siteDriveUrl = "https://graph.microsoft.com/v1.0/sites/";
+	// US Government L4
+	string usl4AuthEndpoint = "https://login.microsoftonline.us";
+	string usl4GraphEndpoint = "https://graph.microsoft.us";
+	
+	// US Government L5
+	string usl5AuthEndpoint = "https://login.microsoftonline.us";
+	string usl5GraphEndpoint = "https://dod-graph.microsoft.us";
+	
+	// Germany
+	string deAuthEndpoint = "https://login.microsoftonline.de";
+	string deGraphEndpoint = "https://graph.microsoft.de";
+	
+	// China
+	string cnAuthEndpoint = "https://login.chinacloudapi.cn";
+	string cnGraphEndpoint = "https://microsoftgraph.chinacloudapi.cn";	
 }
 
 private {
@@ -38,11 +49,27 @@ private {
 
 	// Default Drive ID
 	string driveId = "";
-
-	// Common URL's
-	string driveUrl = "https://graph.microsoft.com/v1.0/me/drive";
-	string itemByIdUrl = "https://graph.microsoft.com/v1.0/me/drive/items/";
-	string itemByPathUrl = "https://graph.microsoft.com/v1.0/me/drive/root:/";
+	
+	// API Query URL's, based on using defaults, but can be updated by config option 'azure_ad_endpoint'
+	// Authentication
+	string authUrl = globalAuthEndpoint ~ "/common/oauth2/v2.0/authorize";
+	string redirectUrl = globalAuthEndpoint ~ "/common/oauth2/nativeclient";
+	string tokenUrl = globalAuthEndpoint ~ "/common/oauth2/v2.0/token";
+	
+	// Drive Queries
+	string driveUrl = globalGraphEndpoint ~ "/v1.0/me/drive";
+	string driveByIdUrl = globalGraphEndpoint ~ "/v1.0/drives/";
+	
+	// What is 'shared with me' Query
+	string sharedWithMe = globalGraphEndpoint ~ "/v1.0/me/drive/sharedWithMe";
+	
+	// Item Queries
+	string itemByIdUrl = globalGraphEndpoint ~ "/v1.0/me/drive/items/";
+	string itemByPathUrl = globalGraphEndpoint ~ "/v1.0/me/drive/root:/";
+	
+	// Office 365 / SharePoint Queries
+	string siteSearchUrl = globalGraphEndpoint ~ "/v1.0/sites?search";
+	string siteDriveUrl = globalGraphEndpoint ~ "/v1.0/sites/";
 }
 
 class OneDriveException: Exception
@@ -73,7 +100,7 @@ final class OneDriveApi
 	private Config cfg;
 	private string refreshToken, accessToken;
 	private SysTime accessTokenExpiration;
-	/* private */ HTTP http;
+	private HTTP http;
 
 	// if true, every new access token is printed
 	bool printAccessToken;
@@ -82,11 +109,11 @@ final class OneDriveApi
 	{
 		this.cfg = cfg;
 		http = HTTP();
+		// Curl Timeout Handling
 		// DNS lookup timeout
 		http.dnsTimeout = (dur!"seconds"(5));
-		// timeout for connecting
+		// Timeout for connecting
 		http.connectTimeout = (dur!"seconds"(10));
-		// Timeouts
 		// with the following settings we force
 		// - if there is no data flow for 5min, abort
 		// - if the download time for one item exceeds 1h, abort
@@ -110,7 +137,90 @@ final class OneDriveApi
 			http.verbose = true;
 			.debugResponse = true;
 		}
-
+		
+		// Configure Azure AD endpoints if 'azure_ad_endpoint' is configured
+		string azureConfigValue = cfg.getValueString("azure_ad_endpoint");
+		switch(azureConfigValue) {
+			case "":
+				log.log("Configuring Global Azure AD Endpoints");
+				break;
+			case "USL4":
+				log.log("Configuring Azure AD for US Government Endpoints");
+				// Authentication
+				authUrl = usl4AuthEndpoint ~ "/common/oauth2/v2.0/authorize";
+				redirectUrl = usl4AuthEndpoint ~ "/common/oauth2/nativeclient";
+				tokenUrl = usl4AuthEndpoint ~ "/common/oauth2/v2.0/token";
+				// Drive Queries
+				driveUrl = usl4GraphEndpoint ~ "/v1.0/me/drive";
+				driveByIdUrl = usl4GraphEndpoint ~ "/v1.0/drives/";					
+				// Item Queries
+				itemByIdUrl = usl4GraphEndpoint ~ "/v1.0/me/drive/items/";
+				itemByPathUrl = usl4GraphEndpoint ~ "/v1.0/me/drive/root:/";
+				// Office 365 / SharePoint Queries
+				siteSearchUrl = usl4GraphEndpoint ~ "/v1.0/sites?search";
+				siteDriveUrl = usl4GraphEndpoint ~ "/v1.0/sites/";
+				// Shared With Me
+				sharedWithMe = usl4GraphEndpoint ~ "/v1.0/me/drive/sharedWithMe";
+				break;
+			case "USL5":
+				log.log("Configuring Azure AD for US Government Endpoints (DOD)");
+				// Authentication
+				authUrl = usl5AuthEndpoint ~ "/common/oauth2/v2.0/authorize";
+				redirectUrl = usl5AuthEndpoint ~ "/common/oauth2/nativeclient";
+				tokenUrl = usl5AuthEndpoint ~ "/common/oauth2/v2.0/token";
+				// Drive Queries
+				driveUrl = usl5GraphEndpoint ~ "/v1.0/me/drive";
+				driveByIdUrl = usl5GraphEndpoint ~ "/v1.0/drives/";					
+				// Item Queries
+				itemByIdUrl = usl5GraphEndpoint ~ "/v1.0/me/drive/items/";
+				itemByPathUrl = usl5GraphEndpoint ~ "/v1.0/me/drive/root:/";
+				// Office 365 / SharePoint Queries
+				siteSearchUrl = usl5GraphEndpoint ~ "/v1.0/sites?search";
+				siteDriveUrl = usl5GraphEndpoint ~ "/v1.0/sites/";
+				// Shared With Me
+				sharedWithMe = usl5GraphEndpoint ~ "/v1.0/me/drive/sharedWithMe";
+				break;
+			case "DE":
+				log.log("Configuring Azure AD Germany");
+				// Authentication
+				authUrl = deAuthEndpoint ~ "/common/oauth2/v2.0/authorize";
+				redirectUrl = deAuthEndpoint ~ "/common/oauth2/nativeclient";
+				tokenUrl = deAuthEndpoint ~ "/common/oauth2/v2.0/token";
+				// Drive Queries
+				driveUrl = deGraphEndpoint ~ "/v1.0/me/drive";
+				driveByIdUrl = deGraphEndpoint ~ "/v1.0/drives/";					
+				// Item Queries
+				itemByIdUrl = deGraphEndpoint ~ "/v1.0/me/drive/items/";
+				itemByPathUrl = deGraphEndpoint ~ "/v1.0/me/drive/root:/";
+				// Office 365 / SharePoint Queries
+				siteSearchUrl = deGraphEndpoint ~ "/v1.0/sites?search";
+				siteDriveUrl = deGraphEndpoint ~ "/v1.0/sites/";
+				// Shared With Me
+				sharedWithMe = deGraphEndpoint ~ "/v1.0/me/drive/sharedWithMe";
+				break;
+			case "CN":
+				log.log("Configuring AD China operated by 21Vianet");
+				// Authentication
+				authUrl = cnAuthEndpoint ~ "/common/oauth2/v2.0/authorize";
+				redirectUrl = cnAuthEndpoint ~ "/common/oauth2/nativeclient";
+				tokenUrl = cnAuthEndpoint ~ "/common/oauth2/v2.0/token";
+				// Drive Queries
+				driveUrl = cnGraphEndpoint ~ "/v1.0/me/drive";
+				driveByIdUrl = cnGraphEndpoint ~ "/v1.0/drives/";					
+				// Item Queries
+				itemByIdUrl = cnGraphEndpoint ~ "/v1.0/me/drive/items/";
+				itemByPathUrl = cnGraphEndpoint ~ "/v1.0/me/drive/root:/";
+				// Office 365 / SharePoint Queries
+				siteSearchUrl = cnGraphEndpoint ~ "/v1.0/sites?search";
+				siteDriveUrl = cnGraphEndpoint ~ "/v1.0/sites/";
+				// Shared With Me
+				sharedWithMe = cnGraphEndpoint ~ "/v1.0/me/drive/sharedWithMe";
+				break;
+			// Default - all other entries 
+			default:
+				log.log("Unknown Azure AD Endpoint request - using Global Azure AD Endpoints");
+		}
+		
 		// Configure the User Agent string
 		if (cfg.getValueString("user_agent") == "") {
 			// Application User Agent string defaults
@@ -145,6 +255,20 @@ final class OneDriveApi
 				.simulateNoRefreshTokenFile = true;
 			}
 		}
+	}
+
+	// Shutdown OneDrive HTTP construct
+	void shutdown()
+	{
+		// reset any values to defaults, freeing any set objects
+		http.clearRequestHeaders();
+		http.onSend = null;
+		http.onReceive = null;
+		http.onReceiveHeader = null;
+		http.onReceiveStatusLine = null;
+		http.contentLength = 0;
+		// shut down the curl instance
+		http.shutdown();
 	}
 
 	bool init()
@@ -266,6 +390,8 @@ final class OneDriveApi
 	JSONValue getDefaultDrive()
 	{
 		checkAccessTokenExpired();
+		const(char)[] url;
+		url = driveUrl;
 		return get(driveUrl);
 	}
 
@@ -273,17 +399,65 @@ final class OneDriveApi
 	JSONValue getDefaultRoot()
 	{
 		checkAccessTokenExpired();
-		return get(driveUrl ~ "/root");
+		const(char)[] url;
+		url = driveUrl ~ "/root";
+		return get(url);
+	}
+	
+	// https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_get
+	JSONValue getDriveIdRoot(const(char)[] driveId)
+	{
+		checkAccessTokenExpired();
+		const(char)[] url;
+		url = driveByIdUrl ~ driveId ~ "/root";
+		return get(url);
 	}
 
+	// https://docs.microsoft.com/en-us/graph/api/drive-sharedwithme
+	JSONValue getSharedWithMe()
+	{
+		checkAccessTokenExpired();
+		return get(sharedWithMe);
+	}
+	
 	// https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_delta
-	JSONValue viewChangesById(const(char)[] driveId, const(char)[] id, const(char)[] deltaLink)
+	JSONValue viewChangesByItemId(const(char)[] driveId, const(char)[] id, const(char)[] deltaLink)
+	{
+		checkAccessTokenExpired();
+		const(char)[] url;
+		// configure deltaLink to query
+		if (deltaLink.empty) {
+			url = driveByIdUrl ~ driveId ~ "/items/" ~ id ~ "/delta";
+			url ~= "?select=id,name,eTag,cTag,deleted,file,folder,root,fileSystemInfo,remoteItem,parentReference,size";
+		} else {
+			url = deltaLink;
+		}
+		return get(url);
+	}
+	
+	// https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_delta
+	JSONValue viewChangesByDriveId(const(char)[] driveId, const(char)[] deltaLink)
 	{
 		checkAccessTokenExpired();
 		const(char)[] url = deltaLink;
 		if (url == null) {
-			url = driveByIdUrl ~ driveId ~ "/items/" ~ id ~ "/delta";
+			url = driveByIdUrl ~ driveId ~ "/root/delta";
 			url ~= "?select=id,name,eTag,cTag,deleted,file,folder,root,fileSystemInfo,remoteItem,parentReference,size";
+		}
+		return get(url);
+	}
+	
+	// https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_list_children
+	JSONValue listChildren(const(char)[] driveId, const(char)[] id, const(char)[] nextLink)
+	{
+		checkAccessTokenExpired();
+		const(char)[] url;
+		// configure URL to query
+		if (nextLink.empty) {
+			url = driveByIdUrl ~ driveId ~ "/items/" ~ id ~ "/children";
+			url ~= "?select=id,name,eTag,cTag,deleted,file,folder,root,fileSystemInfo,remoteItem,parentReference,size";
+		} else {
+			url = nextLink;
 		}
 		return get(url);
 	}
@@ -354,7 +528,6 @@ final class OneDriveApi
 	{
 		checkAccessTokenExpired();
 		const(char)[] url;
-		//		string itemByPathUrl = "https://graph.microsoft.com/v1.0/me/drive/root:/";
 		if ((path == ".")||(path == "/")) url = driveUrl ~ "/root/";
 		else url = itemByPathUrl ~ encodeComponent(path) ~ ":/";
 		url ~= "?select=id,name,eTag,cTag,deleted,file,folder,root,fileSystemInfo,remoteItem,parentReference,size";
@@ -367,11 +540,23 @@ final class OneDriveApi
 	{
 		checkAccessTokenExpired();
 		const(char)[] url;
-		//		string driveByIdUrl = "https://graph.microsoft.com/v1.0/drives/";
 		url = driveByIdUrl ~ driveId ~ "/items/" ~ id;
 		url ~= "?select=id,name,eTag,cTag,deleted,file,folder,root,fileSystemInfo,remoteItem,parentReference,size";
 		return get(url);
 	}
+	
+	// Return the requested details of the specified path on the specified drive id
+	JSONValue getPathDetailsByDriveId(const(char)[] driveId, const(string) path)
+	{
+		checkAccessTokenExpired();
+		const(char)[] url;
+		//		string driveByIdUrl = "https://graph.microsoft.com/v1.0/drives/";
+		// Required format: /drives/{drive-id}/root:/{item-path}
+		url = driveByIdUrl ~ driveId ~ "/root:/" ~ encodeComponent(path);
+		url ~= "?select=id,name,eTag,cTag,deleted,file,folder,root,fileSystemInfo,remoteItem,parentReference,size";
+		return get(url);
+	}
+		
 	
 	// Return the requested details of the specified id
 	// https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_get
@@ -379,7 +564,6 @@ final class OneDriveApi
 	{
 		checkAccessTokenExpired();
 		const(char)[] url;
-		//		string driveByIdUrl = "https://graph.microsoft.com/v1.0/drives/";
 		url = driveByIdUrl ~ driveId ~ "/items/" ~ id;
 		url ~= "?select=size,malware,file,webUrl";
 		return get(url);
@@ -409,18 +593,29 @@ final class OneDriveApi
 	JSONValue uploadFragment(const(char)[] uploadUrl, string filepath, long offset, long offsetSize, long fileSize)
 	{
 		checkAccessTokenExpired();
+		// open file as read-only in binary mode
+		auto file = File(filepath, "rb");
+		file.seek(offset);
+		string contentRange = "bytes " ~ to!string(offset) ~ "-" ~ to!string(offset + offsetSize - 1) ~ "/" ~ to!string(fileSize);
+		
+		// function scopes
 		scope(exit) {
 			http.clearRequestHeaders();
 			http.onSend = null;
+			http.onReceive = null;
+			http.onReceiveHeader = null;
+			http.onReceiveStatusLine = null;
+			http.contentLength = 0;
+			// close file if open
+			if (file.isOpen()){
+				// close open file
+				file.close();
+			}
 		}
+		
 		http.method = HTTP.Method.put;
 		http.url = uploadUrl;
-		
-		import std.conv;
-		string contentRange = "bytes " ~ to!string(offset) ~ "-" ~ to!string(offset + offsetSize - 1) ~ "/" ~ to!string(fileSize);
 		http.addRequestHeader("Content-Range", contentRange);
-		auto file = File(filepath, "rb");
-		file.seek(offset);
 		http.onSend = data => file.rawRead(data).length;
 		http.contentLength = offsetSize;
 		auto response = perform();
@@ -524,10 +719,12 @@ final class OneDriveApi
 	private JSONValue get(const(char)[] url, bool skipToken = false)
 	{
 		scope(exit) http.clearRequestHeaders();
+		log.vdebug("Request URL = ", url);
 		http.method = HTTP.Method.get;
 		http.url = url;
 		if (!skipToken) addAccessTokenHeader(); // HACK: requestUploadStatus
-		auto response = perform();
+		JSONValue response;
+		response = perform();
 		checkHttpCode(response);
 		// OneDrive API Response Debugging if --https-debug is being used
 		if (.debugResponse){
@@ -550,14 +747,35 @@ final class OneDriveApi
 	{
 		// Threshold for displaying download bar
 		long thresholdFileSize = 4 * 2^^20; // 4 MiB
+		// open file as write in binary mode
+		auto file = File(filename, "wb");
 		
-		scope(exit) http.clearRequestHeaders();
+		// function scopes
+		scope(exit) {
+			http.clearRequestHeaders();
+			http.onSend = null;
+			http.onReceive = null;
+			http.onReceiveHeader = null;
+			http.onReceiveStatusLine = null;
+			http.contentLength = 0;
+			// Reset onProgress to not display anything for next download
+			http.onProgress = delegate int(size_t dltotal, size_t dlnow, size_t ultotal, size_t ulnow)
+			{
+				return 0;
+			};
+			// close file if open
+			if (file.isOpen()){
+				// close open file
+				file.close();
+			}
+		}
+		
 		http.method = HTTP.Method.get;
 		http.url = url;
 		addAccessTokenHeader();
-		auto f = File(filename, "wb");
+		
 		http.onReceive = (ubyte[] data) {
-			f.rawWrite(data);
+			file.rawWrite(data);
 			return data.length;
 		};
 		
@@ -567,33 +785,57 @@ final class OneDriveApi
 			Progress p = new Progress(iteration);
 			p.title = "Downloading";
 			writeln();
-	
+			bool barInit = false;
 			real previousDLPercent = -1.0;
 			real percentCheck = 5.0;
 			// Setup progress bar to display
 			http.onProgress = delegate int(size_t dltotal, size_t dlnow, size_t ultotal, size_t ulnow)
 			{
 				// For each onProgress, what is the % of dlnow to dltotal
-				real currentDLPercent = round(double(dlnow)/dltotal*100);
-				// If matching 5% of download, increment progress bar
-				if ((isIdentical(fmod(currentDLPercent, percentCheck), 0.0)) && (previousDLPercent != currentDLPercent)) {
-					p.next();
-					previousDLPercent = currentDLPercent;
+				// floor - rounds down to nearest whole number
+				real currentDLPercent = floor(double(dlnow)/dltotal*100);
+				if (currentDLPercent > 0){
+					// We have started downloading
+					// If matching 5% of download, increment progress bar
+					if ((isIdentical(fmod(currentDLPercent, percentCheck), 0.0)) && (previousDLPercent != currentDLPercent)) {
+						// What have we downloaded thus far
+						log.vdebugNewLine("Data Received  = ", dlnow);
+						log.vdebug("Expected Total = ", dltotal);
+						log.vdebug("Percent Complete = ", currentDLPercent);
+						// Increment counter & show bar update
+						p.next();
+						previousDLPercent = currentDLPercent;
+					}
+				} else {
+					if ((currentDLPercent == 0) && (!barInit)) {
+						// Initialise the download bar at 0%
+						// Downloading   0% |                                        |   ETA   --:--:--:^C
+						p.next();
+						barInit = true;
+					}
 				}
 				return 0;
 			};
 		
 			// Perform download & display progress bar
-			http.perform();
-			writeln();
-			// Reset onProgress to not display anything for next download
-			http.onProgress = delegate int(size_t dltotal, size_t dlnow, size_t ultotal, size_t ulnow)
-			{
-				return 0;
-			};
+			try {
+				// try and catch any curl error
+				http.perform();
+				writeln();
+				// Reset onProgress to not display anything for next download done using exit scope
+			} catch (CurlException e) {
+				displayOneDriveErrorMessage(e.msg);
+			}
+			// free progress bar memory
+			p = null;
 		} else {
 			// No progress bar
-			http.perform();
+			try {
+				// try and catch any curl error
+				http.perform();
+			} catch (CurlException e) {
+				displayOneDriveErrorMessage(e.msg);
+			}
 		}
 		
 		// Check the HTTP response code
@@ -635,16 +877,29 @@ final class OneDriveApi
 	
 	private JSONValue upload(string filepath, string url)
 	{
+		checkAccessTokenExpired();
+		// open file as read-only in binary mode
+		auto file = File(filepath, "rb");
+		
+		// function scopes
 		scope(exit) {
 			http.clearRequestHeaders();
 			http.onSend = null;
+			http.onReceive = null;
+			http.onReceiveHeader = null;
+			http.onReceiveStatusLine = null;
 			http.contentLength = 0;
+			// close file if open
+			if (file.isOpen()){
+				// close open file
+				file.close();
+			}
 		}
+		
 		http.method = HTTP.Method.put;
 		http.url = url;
 		addAccessTokenHeader();
 		http.addRequestHeader("Content-Type", "application/octet-stream");
-		auto file = File(filepath, "rb");
 		http.onSend = data => file.rawRead(data).length;
 		http.contentLength = file.size;
 		auto response = perform();
@@ -678,6 +933,8 @@ final class OneDriveApi
 	{
 		scope(exit) http.onReceive = null;
 		char[] content;
+		JSONValue json;
+
 		http.onReceive = (ubyte[] data) {
 			content ~= data;
 			// HTTP Server Response Code Debugging if --https-debug is being used
@@ -687,8 +944,6 @@ final class OneDriveApi
 			return data.length;
 		};
 		
-		JSONValue json;
-		
 		try {
 			http.perform();
 			// Get the HTTP Response headers - needed for correct 429 handling
@@ -697,23 +952,21 @@ final class OneDriveApi
 			if (.debugResponse){
 				log.vdebug("onedrive.perform() => HTTP Response Headers: ", responseHeaders);
 			}
-			
+			// is retry-after in the response headers
 			if ("retry-after" in http.responseHeaders) {
-				// retry-after as in the response headers
-				// Set the value
+				// Set the retry-after value
 				log.vdebug("onedrive.perform() => Received a 'Retry-After' Header Response with the following value: ", http.responseHeaders["retry-after"]);
 				log.vdebug("onedrive.perform() => Setting retryAfterValue to: ", http.responseHeaders["retry-after"]);
 				.retryAfterValue = to!ulong(http.responseHeaders["retry-after"]);
 			}
-			
 		} catch (CurlException e) {
 			// Parse and display error message received from OneDrive
 			log.error("ERROR: OneDrive returned an error with the following message:");
+			
 			auto errorArray = splitLines(e.msg);
 			string errorMessage = errorArray[0];
 						
-			if (canFind(errorMessage, "Couldn't connect to server on handle") ||
-			    canFind(errorMessage, "Couldn't resolve host name on handle")) {
+			if (canFind(errorMessage, "Couldn't connect to server on handle") || canFind(errorMessage, "Couldn't resolve host name on handle")) {
 				// This is a curl timeout
 				log.error("  Error Message: There was a timeout in accessing the Microsoft OneDrive service - Internet connectivity issue?");
 				// or 408 request timeout
@@ -726,11 +979,13 @@ final class OneDriveApi
 				bool retrySuccess = false;
 				while (!retrySuccess){
 					backoffInterval++;
-					log.vdebug("  Retry Attempt: ", retryAttempts);
 					int thisBackOffInterval = retryAttempts*backoffInterval;
+					log.vdebug("  Retry Attempt:      ", retryAttempts);					
 					if (thisBackOffInterval <= maxBackoffInterval) {
+						log.vdebug("  Retry In (seconds): ", thisBackOffInterval);
 						Thread.sleep(dur!"seconds"(thisBackOffInterval));
 					} else {
+						log.vdebug("  Retry In (seconds): ", maxBackoffInterval);
 						Thread.sleep(dur!"seconds"(maxBackoffInterval));
 					}
 					try {
@@ -739,8 +994,7 @@ final class OneDriveApi
 						log.log("Internet connectivity to Microsoft OneDrive service has been restored");
 						retrySuccess = true;
 					} catch (CurlException e) {
-						if (canFind(e.msg, "Couldn't connect to server on handle") ||
-			                            canFind(e.msg, "Couldn't resolve host name on handle")) {
+						if (canFind(e.msg, "Couldn't connect to server on handle") || canFind(e.msg, "Couldn't resolve host name on handle")) {
 							log.error("  Error Message: There was a timeout in accessing the Microsoft OneDrive service - Internet connectivity issue?");
 							// Increment & loop around
 							retryAttempts++;
@@ -784,7 +1038,7 @@ final class OneDriveApi
 			Errors in the OneDrive API are returned using standard HTTP status codes, as well as a JSON error response object. The following HTTP status codes should be expected.
 
 			Status code		Status message						Description
-			
+			100				Continue							Continue 
 			200 			OK									Request was handled OK
 			201 			Created								This means you've made a successful POST to checkout, lock in a format, or place a hold
 			204				No Content							This means you've made a successful DELETE to remove a hold or return a title
@@ -823,6 +1077,9 @@ final class OneDriveApi
 		{
 			//  0 - OK ... HTTP2 version of 200 OK
 			case 0:
+				break;
+			//  100 - Continue
+			case 100:
 				break;
 			//	200 - OK
 			case 200:
@@ -926,6 +1183,9 @@ final class OneDriveApi
 		{
 			//  0 - OK ... HTTP2 version of 200 OK
 			case 0:
+				break;
+			//  100 - Continue
+			case 100:
 				break;
 			//	200 - OK
 			case 200:
